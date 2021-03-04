@@ -2,12 +2,13 @@
 
 function usage {
     echo
-    echo "BoxBackup [-u username] [-p password] [-t target folder] [-s source folder]"
+    echo "BoxBackup [-u username] [-p password] [-t target folder] [-s source folder] [-m mode]"
     echo
     echo "  -u|--username         Username          Input your box username. e.g. username@uthscsa.edu."
     echo "  -p|--password         Password          If left blank, user will be prompted interactively with a secure input."
     echo "  -t|--target_folder    Directory         Box folder to send files to. e.g. '/Henry_Miller/Cluster_Backups/Analyses'"
     echo "  -s|--source_folder    Directory         Local folder to send files from. e.g. '/home/UTHSCSA/millerh1/Bishop.lab/'"
+    echo "  -m|--mode             Mode              Whether 'upload' or 'download'. By default, 'upload'." 
     echo "  -h|--help                               Display usage info"
     echo
     exit 1
@@ -34,11 +35,13 @@ while [ "$#" -gt 0 ]; do
     -p) PASS="$2"; shift 2;;
     -t) TARGETFOLDER="$2"; shift 2;;
     -s) SOURCEFOLDER="$2"; shift 2;;
+    -m) MODE="$2"; shift 2;;
 
     --username=*) USER="${1#*=}"; shift 1;;
     --password=*) PASS="${1#*=}"; shift 1;;
     --target_folder=*) TARGETFOLDER="${1#*=}"; shift 1;;
     --source_folder=*) SOURCEFOLDER="${1#*=}"; shift 1;;
+    --mode=*) MODE="${1#*=}"; shift 1;;
     
     -*) echo "unknown option: $1" >&2; exit 1;;
     *) handle_argument "$1"; shift 1;;
@@ -49,6 +52,18 @@ if [ -z "$PASS" ]; then
   echo "Account $USER enter password: "
   read -s PASS
 fi
+if [ -z "$MODE" ] || [ $MODE == "upload" ]; then
+  MODE="upload"
+  echo "Uploading"
+  SOURCEFOLDER=$(realpath $SOURCEFOLDER)
+else
+  MODE="download"
+  echo "Downloading"
+fi
+
+
+echo $SOURCEFOLDER " is the source folder ... "
+echo $TARGETFOLDER " is the target folder ... "
 
 echo "Params entered ..."
 echo "Starting backup"
@@ -66,13 +81,26 @@ datSTR=$(date "+%m%d%Y_%T")
 LOGFILE=$SCRIPT_DIR/$datSTR.BoxBackup_log.txt
 (
   echo "$(date "+%m%d%Y %T") : Starting transfer"
-  lftp -f "
-  open ftp.box.com
-  user $USER $PASS
-  lcd $SOURCEFOLDER
-  mirror --only-newer --ignore-time --parallel=10 --reverse --verbose $SOURCEFOLDER $TARGETFOLDER
-  bye
-  "
+  if [ $MODE == "upload" ]; then
+    lftp -f "
+    open ftp.box.com
+    user $USER $PASS
+    lcd $SOURCEFOLDER
+    mirror --only-newer --ignore-time --parallel=10 --no-perms --no-symlinks --reverse --verbose $SOURCEFOLDER $TARGETFOLDER
+    bye
+    "
+  elif [ $MODE == "download" ]; then
+    lftp -f "
+    open ftp.box.com
+    user $USER $PASS
+    lcd $SOURCEFOLDER
+    mirror --only-newer --ignore-time --parallel=10 --verbose $SOURCEFOLDER $TARGETFOLDER
+    bye
+    "
+  else
+    echo "please select either 'upload' or 'download' for mode"
+  fi
+  
   echo "$(date "+%m%d%Y %T") : Done"
 ) |& tee $LOGFILE 
 
